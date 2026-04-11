@@ -1,11 +1,10 @@
 import streamlit as st
 import pickle
 import numpy as np
-import mysql.connector
 import pandas as pd
 
 # -------------------------
-# PAGE CONFIG 
+# PAGE CONFIG
 # -------------------------
 st.set_page_config(page_title="PG Rent Prediction", layout="wide")
 
@@ -78,17 +77,26 @@ input {
 """, unsafe_allow_html=True)
 
 # -------------------------
-# MYSQL CONNECTION
+# DATABASE CONNECTION
 # -------------------------
-def connect_db():
-    return mysql.connector.connect(
+try:
+    import mysql.connector
+    conn = mysql.connector.connect(
         host="localhost",
         user="root",
         password="123456789",
         database="pg_rent_dbase"
     )
+    USE_DB = True
+except:
+    conn = None
+    USE_DB = False
 
-conn = connect_db()
+# -------------------------
+# PREDICTION HISTORY (in-memory fallback)
+# -------------------------
+if "prediction_history" not in st.session_state:
+    st.session_state.prediction_history = []
 
 # -------------------------
 # LOAD MODEL
@@ -175,13 +183,20 @@ elif st.session_state.page == 2:
 
         st.session_state.predicted_rent = int(prediction[0])
 
-        # SAVE TO MYSQL
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO Rent_predictions (location, sharing_type, predicted_rent)
-            VALUES (%s, %s, %s)
-        """, (st.session_state.location, st.session_state.sharing, int(prediction[0])))
-        conn.commit()
+        # SAVE TO DATABASE OR SESSION
+        if USE_DB:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO Rent_predictions (location, sharing_type, predicted_rent)
+                VALUES (%s, %s, %s)
+            """, (st.session_state.location, st.session_state.sharing, int(prediction[0])))
+            conn.commit()
+        else:
+            st.session_state.prediction_history.append({
+                "location": st.session_state.location,
+                "sharing_type": st.session_state.sharing,
+                "predicted_rent": int(prediction[0])
+            })
 
         st.success(f"💰 Updated Rent: ₹ {int(prediction[0])}")
 
@@ -199,19 +214,29 @@ elif st.session_state.page == 3:
     st.subheader("📌 PG Dataset")
 
     try:
-       df = pd.read_sql("SELECT * FROM pune_pg_dataset_1000 LIMIT 50", conn)
-       st.dataframe(df)
+        if USE_DB:
+            df = pd.read_sql("SELECT * FROM pune_pg_dataset_1000 LIMIT 50", conn)
+        else:
+            df = pd.read_csv("pune_pg_dataset_1000.csv").head(50)
+        st.dataframe(df)
     except:
         st.warning("No data found")
 
     st.subheader("📜 Prediction History")
 
     try:
-        history = pd.read_sql(
-            "SELECT * FROM Rent_predictions ORDER BY id DESC LIMIT 10",
-            conn
-        )
-        st.dataframe(history)
+        if USE_DB:
+            history = pd.read_sql(
+                "SELECT * FROM Rent_predictions ORDER BY id DESC LIMIT 10",
+                conn
+            )
+            st.dataframe(history)
+        else:
+            if st.session_state.prediction_history:
+                history = pd.DataFrame(st.session_state.prediction_history)
+                st.dataframe(history)
+            else:
+                st.info("No predictions yet. Go back and make some predictions!")
     except:
         st.warning("No history found")
 
