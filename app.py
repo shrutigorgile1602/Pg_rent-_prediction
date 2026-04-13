@@ -1,10 +1,11 @@
 import streamlit as st
 import pickle
 import numpy as np
+import mysql.connector
 import pandas as pd
 
 # -------------------------
-# PAGE CONFIG
+# PAGE CONFIG 
 # -------------------------
 st.set_page_config(page_title="PG Rent Prediction", layout="wide")
 
@@ -77,26 +78,17 @@ input {
 """, unsafe_allow_html=True)
 
 # -------------------------
-# DATABASE CONNECTION
+# MYSQL CONNECTION
 # -------------------------
-try:
-    import mysql.connector
-    conn = mysql.connector.connect(
+def connect_db():
+    return mysql.connector.connect(
         host="localhost",
         user="root",
         password="123456789",
         database="pg_rent_dbase"
     )
-    USE_DB = True
-except:
-    conn = None
-    USE_DB = False
 
-# -------------------------
-# PREDICTION HISTORY (in-memory fallback)
-# -------------------------
-if "prediction_history" not in st.session_state:
-    st.session_state.prediction_history = []
+conn = connect_db()
 
 # -------------------------
 # LOAD MODEL
@@ -152,16 +144,46 @@ elif st.session_state.page == 2:
 
     st.success(f"💰 Base Rent: ₹ {st.session_state.predicted_rent}")
 
-    wifi = st.selectbox("WiFi", [0,1])
-    ac = st.selectbox("AC", [0,1])
-    food = st.selectbox("Food", [0,1])
-    parking = st.selectbox("Parking", [0,1])
-    laundry = st.selectbox("Laundry", [0,1])
-    power = st.selectbox("Power Backup", [0,1])
-    security = st.selectbox("Security", [0,1])
-    housekeeping = st.selectbox("Housekeeping", [0,1])
-    bathroom = st.selectbox("Attached Bathroom", [0,1])
-    geyser = st.selectbox("Geyser", [0,1])
+    wifi = st.selectbox("WiFi", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    wifi_value = 1 if wifi == "Yes" else 0
+
+    ac = st.selectbox("AC", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    ac_value = 1 if ac == "Yes" else 0
+
+    food = st.selectbox("Food", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    food_value = 1 if food == "Yes" else 0
+
+    parking = st.selectbox("Parking", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    parking_value = 1 if parking == "Yes" else 0
+
+    laundry = st.selectbox("Laundry", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    laundry_value = 1 if laundry == "Yes" else 0
+    
+    power = st.selectbox("Power_backup", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    power_value = 1 if power == "Yes" else 0
+    
+    security = st.selectbox("Security", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    security_value = 1 if security == "Yes" else 0
+
+    housekeeping = st.selectbox("Housekeeping", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    housekeeping_value = 1 if housekeeping == "Yes" else 0
+    
+    bathroom = st.selectbox("Bathroom", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    bathroom_value = 1 if bathroom == "Yes" else 0
+    
+    geyser = st.selectbox("Geyser", ["No", "Yes"])
+    # Convert to 0/1 for backend use
+    geyser_value = 1 if geyser == "Yes" else 0
+    
 
     size = st.slider("Room Size", 300, 700, 500)
 
@@ -171,32 +193,25 @@ elif st.session_state.page == 2:
         share_encoded = le_sharing.transform([st.session_state.sharing])[0]
 
         input_data = np.array([[
-            loc_encoded, share_encoded, size,
-            wifi, ac, food,
-            parking, laundry, power,
-            security, housekeeping, bathroom,
-            geyser,
-            1,1,4.5
+         loc_encoded, share_encoded, size,
+         wifi_value, ac_value, food_value,
+         parking_value, laundry_value, power_value,
+         security_value, housekeeping_value, bathroom_value,
+         geyser_value,
+         1,1,4.5
         ]])
 
         prediction = model.predict(input_data)
 
         st.session_state.predicted_rent = int(prediction[0])
 
-        # SAVE TO DATABASE OR SESSION
-        if USE_DB:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO Rent_predictions (location, sharing_type, predicted_rent)
-                VALUES (%s, %s, %s)
-            """, (st.session_state.location, st.session_state.sharing, int(prediction[0])))
-            conn.commit()
-        else:
-            st.session_state.prediction_history.append({
-                "location": st.session_state.location,
-                "sharing_type": st.session_state.sharing,
-                "predicted_rent": int(prediction[0])
-            })
+        # SAVE TO MYSQL
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO Rent_predictions (location, sharing_type, predicted_rent)
+            VALUES (%s, %s, %s)
+        """, (st.session_state.location, st.session_state.sharing, int(prediction[0])))
+        conn.commit()
 
         st.success(f"💰 Updated Rent: ₹ {int(prediction[0])}")
 
@@ -214,29 +229,19 @@ elif st.session_state.page == 3:
     st.subheader("📌 PG Dataset")
 
     try:
-        if USE_DB:
-            df = pd.read_sql("SELECT * FROM pune_pg_dataset_1000 LIMIT 50", conn)
-        else:
-            df = pd.read_csv("pune_pg_dataset_1000.csv").head(50)
-        st.dataframe(df)
+       df = pd.read_sql("SELECT * FROM pune_pg_dataset_1000 LIMIT 50", conn)
+       st.dataframe(df)
     except:
         st.warning("No data found")
 
     st.subheader("📜 Prediction History")
 
     try:
-        if USE_DB:
-            history = pd.read_sql(
-                "SELECT * FROM Rent_predictions ORDER BY id DESC LIMIT 10",
-                conn
-            )
-            st.dataframe(history)
-        else:
-            if st.session_state.prediction_history:
-                history = pd.DataFrame(st.session_state.prediction_history)
-                st.dataframe(history)
-            else:
-                st.info("No predictions yet. Go back and make some predictions!")
+        history = pd.read_sql(
+            "SELECT * FROM Rent_predictions ORDER BY id DESC LIMIT 10",
+            conn
+        )
+        st.dataframe(history)
     except:
         st.warning("No history found")
 
