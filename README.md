@@ -109,7 +109,9 @@ It can be further expanded into a **full-scale rental platform** with recommenda
 ---
 # Deploy link
 
-https://pgrentprediction.streamlit.app/
+[https://pgrentprediction.streamlit.app/
+](https://pgrentprediction.streamlit.app/)
+
 ## 👩‍💻 Author
 
 **Shruti Gorgile**  
