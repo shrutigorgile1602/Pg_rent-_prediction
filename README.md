@@ -107,7 +107,9 @@ This project demonstrates:
 It can be further expanded into a **full-scale rental platform** with recommendation systems, analytics dashboards, and real-time data integration.
 
 ---
+# Deploy link
 
+https://pgrentprediction.streamlit.app/
 ## 👩‍💻 Author
 
 **Shruti Gorgile**  
